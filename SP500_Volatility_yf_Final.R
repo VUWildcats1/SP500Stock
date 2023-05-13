@@ -2,13 +2,14 @@
 #install.packages("quantmod")
 #install.packages("writexl")
 #install.packages("yfR")
-# Clear workspace. 
+
+# Clear Workspace ---------------------------------------------------------
 rm(list=ls())
 
-#Turn Off Scientific Notation
+# Turn Off Scientific Notation --------------------------------------------
 options(scipen=999)
 
-#Load Packages
+# Load Packages -----------------------------------------------------------
 library(quantmod)
 library(stringr)
 library(tidyr)
@@ -19,14 +20,16 @@ library(BatchGetSymbols)
 library(yfR)
 library(tidyquant)
 
-
+# Get S&P 500 Tickers and Clean -------------------------------------------
 sp500 <- GetSP500Stocks()
 symbols <- sp500$Tickers
 symbols <-gsub("\\.", "-", symbols)
 
+# Set Dates of Review of Adjusted Closing ---------------------------------
 first_date <- Sys.Date() - 365*3
 last_date <- Sys.Date()
 
+# Run function to get stock data ------------------------------------------
 combined_all_data <- yf_get(
   tickers = symbols,
   first_date = first_date,
@@ -34,85 +37,85 @@ combined_all_data <- yf_get(
   thresh_bad_data = 0.25,
 )
 
+# Re-sort data ------------------------------------------------------------
 combined_all_data[order(combined_all_data$ticker, combined_all_data$ref_date),]
 
-
+# Extract Adjusted Closing Price (considers splits, dividends and such-----
 adjustedclose<-combined_all_data[,c(1:2,8)]
 
-  
+
+# Dataframe wide ----------------------------------------------------------
 adjustedclose<-adjustedclose %>%
   pivot_wider(names_from = ticker, values_from = price_adjusted)
 
-
-
-combined_all_df <- data.frame(adjustedclose)
+#combined_all_df <- data.frame(adjustedclose)
 #combined_all_df<-combined_all_df[combined_all_df$Date >= "2018-01-01" & combined_all_df$Date <= Sys.Date(), ]
 #rownames(combined_all_df) = seq(length=nrow(combined_all_df))
-rownames(combined_all_df)<-combined_all_df$ref_date
-combined_all_df<-combined_all_df[-1]
+rownames(adjustedclose)<-adjustedclose$ref_date
+adjustedclose<-adjustedclose[-1]
 
 
 #Populate daily to daily percentage change
-for (col in names(combined_all_df)[1:ncol(combined_all_df)]) {
+for (col in names(adjustedclose)[1:ncol(adjustedclose)]) {
   symbol <- col
   new_col_name <- paste(symbol, "% Change")
-  col_values <- combined_all_df[[col]]
-  combined_all_df[[new_col_name]] <- log(col_values/lag(col_values))
+  col_values <- adjustedclose[[col]]
+  adjustedclose[[new_col_name]] <- log(col_values/lag(col_values))
 }
 #sort from most recent to oldest
-#combined_all_df <- combined_all_df[rev(order(combined_all_df$Date)),]
-combined_all_df_nbr_col <-ceiling(ncol(combined_all_df)/2)
-combined_all_df_col <-combined_all_df_nbr_col+1
-combined_all_df_col_end <-ceiling(ncol(combined_all_df))
-# combined_all_df<-combined_all_df[,c(combined_all_df_col:combined_all_df_col_end)]
+#adjustedclose <- adjustedclose[rev(order(adjustedclose$Date)),]
+adjustedclose_nbr_col <-ceiling(ncol(adjustedclose)/2)
+adjustedclose_col <-adjustedclose_nbr_col+1
+adjustedclose_col_end <-ceiling(ncol(adjustedclose))
+# adjustedclose<-adjustedclose[,c(adjustedclose_col:adjustedclose_col_end)]
 
 #calculate Average Daily Volatility
-for (col in names(combined_all_df)[(ncol(combined_all_df)/2+1):ncol(combined_all_df)]) {
+for (col in names(adjustedclose)[(ncol(adjustedclose)/2+1):ncol(adjustedclose)]) {
   symbol <- str_sub(col, 1, -10)
   new_col_name <- paste(symbol, "Avg Daily Volatility")
-  col_values <- combined_all_df[[col]]
-  combined_all_df[[new_col_name]] <- sd(col_values, na.rm=TRUE)
+  col_values <- adjustedclose[[col]]
+  adjustedclose[[new_col_name]] <- sd(col_values, na.rm=TRUE)
 }
 
 #calculate Annualized Volatility
-for (col in names(combined_all_df)[(ncol(combined_all_df)-combined_all_df_nbr_col+1):ncol(combined_all_df)]) {
+for (col in names(adjustedclose)[(ncol(adjustedclose)-adjustedclose_nbr_col+1):ncol(adjustedclose)]) {
   symbol <- str_sub(col, 1, -22)
   new_col_name <- paste(symbol, "Annualized Volatility")
-  col_values <- combined_all_df[[col]]
-  combined_all_df[[new_col_name]] <- col_values*sqrt(252)
+  col_values <- adjustedclose[[col]]
+  adjustedclose[[new_col_name]] <- col_values*sqrt(252)
 }
 
 #calculate TSR
-# for (col in names(combined_all_df)[1:combined_all_df_nbr_col]) {
+# for (col in names(adjustedclose)[1:adjustedclose_nbr_col]) {
 #   symbol <- str_sub(col, 1, -6)
 #   new_col_name <- paste(symbol, "TSR")
-#   col_values <- combined_all_df[[col]]
-#   combined_all_df[[new_col_name]] <- (col_values[nrow(combined_all_df)]-col_values[1])/col_values[1]
+#   col_values <- adjustedclose[[col]]
+#   adjustedclose[[new_col_name]] <- (col_values[nrow(adjustedclose)]-col_values[1])/col_values[1]
 # }
 
-for (col in names(combined_all_df)[1:combined_all_df_nbr_col]) {
+for (col in names(adjustedclose)[1:adjustedclose_nbr_col]) {
   symbol <- sub("\\..*", "",col)
   new_col_name <- paste(symbol, "TSR")
-  col_values <- combined_all_df[[col]]
-  combined_all_df[[new_col_name]] <- (col_values[nrow(combined_all_df)]-col_values[1])/col_values[1]
+  col_values <- adjustedclose[[col]]
+  adjustedclose[[new_col_name]] <- (col_values[nrow(adjustedclose)]-col_values[1])/col_values[1]
 }
 
-combined_all_df <- tibble::rownames_to_column(combined_all_df, "Date")
-combined_all_df$Date <- as.Date(combined_all_df$Date, format = "%Y-%m-%d")
+adjustedclose <- tibble::rownames_to_column(adjustedclose, "Date")
+adjustedclose$Date <- as.Date(adjustedclose$Date, format = "%Y-%m-%d")
 
-new_order = sort(colnames(combined_all_df))
-combined_all_df_sorted <- combined_all_df[, new_order]
+new_order = sort(colnames(adjustedclose))
+adjustedclose_sorted <- adjustedclose[, new_order]
 
 #write to excel
-write_xlsx(combined_all_df, paste0("VolatilityOutput",Sys.Date(),".xlsx"))
+write_xlsx(adjustedclose, paste0("VolatilityOutput",Sys.Date(),".xlsx"))
 
 #make into dataframe
-Output <- as.data.frame(t(combined_all_df))
+Output <- as.data.frame(t(adjustedclose))
 
 colnames(Output)<-Output[1,]
 Output = Output[-1, ]
 
-SummaryOutput<- Output[ -c(1:(combined_all_df_nbr_col*2)), ]
+SummaryOutput<- Output[ -c(1:(adjustedclose_nbr_col*2)), ]
 
 #Reduce to single column
 SummaryOutput<- SummaryOutput[-c(2:ncol(SummaryOutput))]
@@ -130,9 +133,3 @@ SummaryOutput<-SummaryOutput[order(SummaryOutput$HeaderName),]
 #write to excel
 write_xlsx(SummaryOutput, "VolatilitySummaryOutput.xlsx")
 
-
-volatile_stock<-getSymbols("PYPL",from=Sys.Date()-730,to=Sys.Date(),auto.assign = F)
-volatile_stock<-as.data.frame(volatile_stock)
-nbrshares<-floor(200000/volatile_stock[1,6])
-volatile_stock$nbrshares<-nbrshares
-volatile_stock$valueshares<-round(volatile_stock$nbrshares*volatile_stock$PYPL.Adjusted,2)
