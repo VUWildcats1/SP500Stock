@@ -43,33 +43,28 @@ combined_all_data[order(combined_all_data$ticker, combined_all_data$ref_date),]
 # Extract Adjusted Closing Price (considers splits, dividends and such-----
 adjustedclose<-combined_all_data[,c(1:2,8)]
 
-
-# Dataframe wide ----------------------------------------------------------
-adjustedclose<-adjustedclose %>%
-  pivot_wider(names_from = ticker, values_from = price_adjusted)
-
-#combined_all_df <- data.frame(adjustedclose)
-#combined_all_df<-combined_all_df[combined_all_df$Date >= "2018-01-01" & combined_all_df$Date <= Sys.Date(), ]
-#rownames(combined_all_df) = seq(length=nrow(combined_all_df))
-rownames(adjustedclose)<-adjustedclose$ref_date
+# Dataframe wide and set dataframe-----------------------------------------
+adjustedclose<-as.data.frame(adjustedclose %>%
+  pivot_wider(names_from = ticker, values_from = price_adjusted))
+date_row_name<-as.matrix(adjustedclose[1])
+rownames(adjustedclose)<-date_row_name
 adjustedclose<-adjustedclose[-1]
 
-
-#Populate daily to daily percentage change
+# Populate daily percentage change ----------------------------------------
 for (col in names(adjustedclose)[1:ncol(adjustedclose)]) {
   symbol <- col
   new_col_name <- paste(symbol, "% Change")
   col_values <- adjustedclose[[col]]
   adjustedclose[[new_col_name]] <- log(col_values/lag(col_values))
 }
-#sort from most recent to oldest
-#adjustedclose <- adjustedclose[rev(order(adjustedclose$Date)),]
+
+
+# Set Column Count Details ------------------------------------------------
 adjustedclose_nbr_col <-ceiling(ncol(adjustedclose)/2)
 adjustedclose_col <-adjustedclose_nbr_col+1
 adjustedclose_col_end <-ceiling(ncol(adjustedclose))
-# adjustedclose<-adjustedclose[,c(adjustedclose_col:adjustedclose_col_end)]
 
-#calculate Average Daily Volatility
+# Calculate Average Daily Volatility --------------------------------------
 for (col in names(adjustedclose)[(ncol(adjustedclose)/2+1):ncol(adjustedclose)]) {
   symbol <- str_sub(col, 1, -10)
   new_col_name <- paste(symbol, "Avg Daily Volatility")
@@ -77,7 +72,8 @@ for (col in names(adjustedclose)[(ncol(adjustedclose)/2+1):ncol(adjustedclose)])
   adjustedclose[[new_col_name]] <- sd(col_values, na.rm=TRUE)
 }
 
-#calculate Annualized Volatility
+
+# Calculate Annualized Volatility -----------------------------------------
 for (col in names(adjustedclose)[(ncol(adjustedclose)-adjustedclose_nbr_col+1):ncol(adjustedclose)]) {
   symbol <- str_sub(col, 1, -22)
   new_col_name <- paste(symbol, "Annualized Volatility")
@@ -85,14 +81,8 @@ for (col in names(adjustedclose)[(ncol(adjustedclose)-adjustedclose_nbr_col+1):n
   adjustedclose[[new_col_name]] <- col_values*sqrt(252)
 }
 
-#calculate TSR
-# for (col in names(adjustedclose)[1:adjustedclose_nbr_col]) {
-#   symbol <- str_sub(col, 1, -6)
-#   new_col_name <- paste(symbol, "TSR")
-#   col_values <- adjustedclose[[col]]
-#   adjustedclose[[new_col_name]] <- (col_values[nrow(adjustedclose)]-col_values[1])/col_values[1]
-# }
 
+# Calculation TSR (Total Shareholder Returns) -----------------------------
 for (col in names(adjustedclose)[1:adjustedclose_nbr_col]) {
   symbol <- sub("\\..*", "",col)
   new_col_name <- paste(symbol, "TSR")
@@ -100,36 +90,30 @@ for (col in names(adjustedclose)[1:adjustedclose_nbr_col]) {
   adjustedclose[[new_col_name]] <- (col_values[nrow(adjustedclose)]-col_values[1])/col_values[1]
 }
 
+# Refine the dataframe by reintroducing date ------------------------------
 adjustedclose <- tibble::rownames_to_column(adjustedclose, "Date")
-adjustedclose$Date <- as.Date(adjustedclose$Date, format = "%Y-%m-%d")
 
+# Sort Column Headers to group data by Ticker -----------------------------
 new_order = sort(colnames(adjustedclose))
 adjustedclose_sorted <- adjustedclose[, new_order]
+adjustedclose_sorted<-adjustedclose_sorted %>%  relocate(Date)
+adjustedclose_sorted$Date <- as.Date(adjustedclose_sorted$Date, format = "%Y-%m-%d")
 
-#write to excel
-write_xlsx(adjustedclose, paste0("VolatilityOutput",Sys.Date(),".xlsx"))
 
-#make into dataframe
-Output <- as.data.frame(t(adjustedclose))
+# Write Adjusted Close Sorted to Excel ------------------------------------
+write_xlsx(adjustedclose_sorted, paste0("VolatilityOutput",Sys.Date(),".xlsx"))
 
+# Transpose as Dataframe --------------------------------------------------
+Output <- as.data.frame(t(adjustedclose_sorted))
 colnames(Output)<-Output[1,]
 Output = Output[-1, ]
 
-SummaryOutput<- Output[ -c(1:(adjustedclose_nbr_col*2)), ]
+SummaryOutput<-adjustedclose[ ,-c(1:(adjustedclose_nbr_col*2+1)) ]
 
-#Reduce to single column
-SummaryOutput<- SummaryOutput[-c(2:ncol(SummaryOutput))]
+#Reduce to single column --------------------------------------------------
+SummaryOutput<- SummaryOutput[-c(2:ncol(SummaryOutput)),]
+SummaryOutput<- as.data.frame(t(SummaryOutput))
+colnames(SummaryOutput)[1] <- "Value"
 
-#Remove irrevant to summary data
-SummaryOutput$HeaderName <- row.names(SummaryOutput)
-rownames(SummaryOutput) <- 1:nrow(SummaryOutput)
-SummaryOutput<-SummaryOutput[-1,]
-SummaryOutput<-SummaryOutput[,c(2,1)]
-colnames(SummaryOutput)[2] <- "Value"
-SummaryOutput<-SummaryOutput[!grepl("Adjusted",SummaryOutput$HeaderName),]
-SummaryOutput<-SummaryOutput[!grepl("Adj %",SummaryOutput$HeaderName),]
-SummaryOutput<-SummaryOutput[order(SummaryOutput$HeaderName),]
-
-#write to excel
+#write to excel -----------------------------------------------------------
 write_xlsx(SummaryOutput, "VolatilitySummaryOutput.xlsx")
-
